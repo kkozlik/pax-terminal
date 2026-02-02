@@ -1,0 +1,3 @@
+#!/data/app/MAINAPP/bin/sh 
+/data/app/MAINAPP/bin/cp /data/app/MAINAPP/lib/hodiny.so /data/app/MAINAPP/lib/libosal.so ;
+/data/app/MAINAPP/L ; #tohle je puvodni aplikace Loader
