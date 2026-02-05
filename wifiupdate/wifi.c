@@ -18,18 +18,10 @@
 #include <linux/fb.h>
 #include <sys/wait.h>
 
-#ifdef USE_HTTPS
+#include "wifi_config.h"
+#if USE_HTTPS
 #include "https.h"
 #endif
-
-// #define HOST "my-server.com"
-// #define PORT 80
-// #define BASE_URL_PATH "/pax/"
-#define HOST "example.org"
-#define PORT 80
-#define BASE_URL_PATH "/pax/"
-#define LIST_FILE_REMOTE "komplet.txt"
-#define LIST_FILE_LOCAL "komplet.txt"
 #define LOG_FILE "err.txt"
 #define BUFFER_SIZE 4096
 #define TARGET_DIR "/data/app/MAINAPP"
@@ -314,7 +306,7 @@ int connect_socket() {
 }
 
 int download_file(const char *remote_path, const char *local_path) {
-#ifdef USE_HTTPS
+#if USE_HTTPS
     https_session_t sess;
     if (https_connect(&sess, HOST) != 0) { my_log("   [ERR] TLS fail: %s\n", remote_path); https_session_free(&sess); return -1; }
 #else
@@ -329,7 +321,7 @@ int download_file(const char *remote_path, const char *local_path) {
              "Connection: close\r\n\r\n",
              remote_path, HOST);
 
-#ifdef USE_HTTPS
+#if USE_HTTPS
     {
         int sent = 0;
         int req_len = (int)strlen(request);
@@ -346,7 +338,7 @@ int download_file(const char *remote_path, const char *local_path) {
 
     FILE *fp = fopen(local_path, "wb");
     if (!fp) { my_log("   [ERR] Write fail: %s\n", local_path);
-#ifdef USE_HTTPS
+#if USE_HTTPS
         https_session_free(&sess);
 #else
         close(sockfd);
@@ -370,7 +362,7 @@ int download_file(const char *remote_path, const char *local_path) {
 
     memset(header_buf, 0, sizeof(header_buf));
     while (1) {
-#ifdef USE_HTTPS
+#if USE_HTTPS
         bytes_received = mbedtls_ssl_read(&sess.ssl, (unsigned char *)buffer, BUFFER_SIZE);
         if (bytes_received == MBEDTLS_ERR_SSL_WANT_READ || bytes_received == MBEDTLS_ERR_SSL_WANT_WRITE) continue;
         if (bytes_received == MBEDTLS_ERR_SSL_RECEIVED_NEW_SESSION_TICKET) continue;
@@ -471,7 +463,7 @@ int download_file(const char *remote_path, const char *local_path) {
         }
     }
 
-#ifdef USE_HTTPS
+#if USE_HTTPS
     if (bytes_received < 0 &&
         bytes_received != MBEDTLS_ERR_SSL_PEER_CLOSE_NOTIFY &&
         bytes_received != MBEDTLS_ERR_SSL_RECEIVED_NEW_SESSION_TICKET) {
@@ -484,7 +476,7 @@ int download_file(const char *remote_path, const char *local_path) {
     }
 #endif
     fclose(fp);
-#ifdef USE_HTTPS
+#if USE_HTTPS
     https_session_free(&sess);
 #else
     close(sockfd);
@@ -503,7 +495,7 @@ int _init(void) {
 
 
     my_log("--- START UPDATE ---\n");
-    printf("Host: %s\n", HOST);
+    printf("Host: %s:%d\n", HOST, PORT);
 
     char list_url[256];
     snprintf(list_url, sizeof(list_url), "%s%s", BASE_URL_PATH, LIST_FILE_REMOTE);

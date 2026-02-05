@@ -1,7 +1,7 @@
 #ifndef WIFIUPDATE_HTTPS_H
 #define WIFIUPDATE_HTTPS_H
 
-#ifdef USE_HTTPS
+#if USE_HTTPS
 #include <mbedtls/ssl.h>
 
 typedef struct {

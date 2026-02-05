@@ -20,7 +20,7 @@ $(TARGET): wifi.c https.c mbedtls_entropy.c $(MBEDTLS_LIBS)
 		-I $(MBEDTLS_DIR)/include/ \
 		-I $(MBEDTLS_DIR)/tf-psa-crypto/include/ \
 		-I $(MBEDTLS_DIR)/tf-psa-crypto/drivers/builtin/include/ \
-		-MMD -MP -DUSE_HTTPS -o $(TARGET) wifi.c https.c mbedtls_entropy.c $(MBEDTLS_LIBS) -nostartfiles -static
+		-MMD -MP -o $(TARGET) wifi.c https.c mbedtls_entropy.c $(MBEDTLS_LIBS) -nostartfiles -static
 
 install: $(TARGET)
 	@echo Pushing $(TARGET)

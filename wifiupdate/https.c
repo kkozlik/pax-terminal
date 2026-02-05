@@ -1,4 +1,6 @@
-#ifdef USE_HTTPS
+#include "wifi_config.h"
+
+#if USE_HTTPS
 #include "https.h"
 
 #include <string.h>
