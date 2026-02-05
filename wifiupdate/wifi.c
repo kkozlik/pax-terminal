@@ -18,6 +18,12 @@
 #include <linux/fb.h>
 #include <sys/wait.h>
 
+#ifdef USE_HTTPS
+#include <mbedtls/ssl.h>
+#include <mbedtls/error.h>
+#include <psa/crypto.h>
+#endif
+
 // #define HOST "my-server.com"
 // #define PORT 80
 // #define BASE_URL_PATH "/pax/"
@@ -291,6 +297,115 @@ void trim_end(char *str) {
     }
 }
 
+#ifdef USE_HTTPS
+typedef struct {
+    int fd;
+    mbedtls_ssl_context ssl;
+    mbedtls_ssl_config conf;
+} https_session_t;
+
+static void https_session_init(https_session_t *s) {
+    s->fd = -1;
+    mbedtls_ssl_init(&s->ssl);
+    mbedtls_ssl_config_init(&s->conf);
+}
+
+static void https_session_free(https_session_t *s) {
+    mbedtls_ssl_free(&s->ssl);
+    mbedtls_ssl_config_free(&s->conf);
+    if (s->fd >= 0) {
+        close(s->fd);
+        s->fd = -1;
+    }
+}
+
+// Custom BIO callbacks to avoid MBEDTLS_NET_C (non-POSIX platforms).
+static int https_send_cb(void *ctx, const unsigned char *buf, size_t len) {
+    int fd = *(int *)ctx;
+    int ret = send(fd, buf, len, 0);
+    if (ret >= 0) return ret;
+    if (errno == EAGAIN || errno == EWOULDBLOCK) return MBEDTLS_ERR_SSL_WANT_WRITE;
+    return MBEDTLS_ERR_SSL_INTERNAL_ERROR;
+}
+
+// Map socket recv to Mbed TLS non-blocking semantics.
+static int https_recv_cb(void *ctx, unsigned char *buf, size_t len) {
+    int fd = *(int *)ctx;
+    int ret = recv(fd, buf, len, 0);
+    if (ret > 0) return ret;
+    if (ret == 0) return MBEDTLS_ERR_SSL_PEER_CLOSE_NOTIFY;
+    if (errno == EAGAIN || errno == EWOULDBLOCK) return MBEDTLS_ERR_SSL_WANT_READ;
+    return MBEDTLS_ERR_SSL_INTERNAL_ERROR;
+}
+
+// Separate connector so HTTPS can use port 443 while HTTP uses PORT.
+static int connect_socket_port(int port) {
+    struct hostent *host = gethostbyname(HOST);
+    if (!host) return -1;
+    int sockfd = socket(AF_INET, SOCK_STREAM, 0);
+    if (sockfd == -1) return -1;
+    struct sockaddr_in server_addr;
+    server_addr.sin_family = AF_INET;
+    server_addr.sin_port = htons(port);
+    server_addr.sin_addr = *((struct in_addr *)host->h_addr);
+    memset(&(server_addr.sin_zero), 0, 8);
+    if (connect(sockfd, (struct sockaddr *)&server_addr, sizeof(struct sockaddr)) == -1) {
+        close(sockfd);
+        return -1;
+    }
+    return sockfd;
+}
+
+static int https_connect(https_session_t *s) {
+    int ret;
+
+    https_session_init(s);
+
+    // TLS uses PSA RNG in MbedTLS 4.x.
+    if ((ret = psa_crypto_init()) != PSA_SUCCESS) {
+        my_log("   [ERR] PSA init fail: %d\n", ret);
+        return -1;
+    }
+
+    s->fd = connect_socket_port(443);
+    if (s->fd < 0) {
+        my_log("   [ERR] TLS connect fail: %s\n", HOST);
+        return -1;
+    }
+
+    if ((ret = mbedtls_ssl_config_defaults(&s->conf, MBEDTLS_SSL_IS_CLIENT,
+                                           MBEDTLS_SSL_TRANSPORT_STREAM,
+                                           MBEDTLS_SSL_PRESET_DEFAULT)) != 0) {
+        my_log("   [ERR] TLS conf fail: -0x%04x\n", -ret);
+        return -1;
+    }
+
+    mbedtls_ssl_conf_authmode(&s->conf, MBEDTLS_SSL_VERIFY_NONE);
+
+    if ((ret = mbedtls_ssl_setup(&s->ssl, &s->conf)) != 0) {
+        my_log("   [ERR] TLS setup fail: -0x%04x\n", -ret);
+        return -1;
+    }
+
+    if ((ret = mbedtls_ssl_set_hostname(&s->ssl, HOST)) != 0) {
+        my_log("   [ERR] TLS hostname fail: -0x%04x\n", -ret);
+        return -1;
+    }
+
+    // Wire TLS to our socket callbacks.
+    mbedtls_ssl_set_bio(&s->ssl, &s->fd, https_send_cb, https_recv_cb, NULL);
+
+    while ((ret = mbedtls_ssl_handshake(&s->ssl)) != 0) {
+        if (ret != MBEDTLS_ERR_SSL_WANT_READ && ret != MBEDTLS_ERR_SSL_WANT_WRITE) {
+            my_log("   [ERR] TLS handshake fail: -0x%04x\n", -ret);
+            return -1;
+        }
+    }
+
+    return 0;
+}
+#endif
+
 // --- NETWORK ---
 int connect_socket() {
     struct hostent *host = gethostbyname(HOST);
@@ -310,37 +425,181 @@ int connect_socket() {
 }
 
 int download_file(const char *remote_path, const char *local_path) {
+#ifdef USE_HTTPS
+    https_session_t sess;
+    if (https_connect(&sess) != 0) { my_log("   [ERR] TLS fail: %s\n", remote_path); https_session_free(&sess); return -1; }
+#else
     int sockfd = connect_socket();
     if (sockfd == -1) { my_log("   [ERR] Socket fail: %s\n", remote_path); return -1; }
+#endif
 
     char request[512];
     snprintf(request, sizeof(request),
              "GET %s HTTP/1.1\r\n"
-             "Host: %s:%d\r\n"
+             "Host: %s\r\n"
              "Connection: close\r\n\r\n",
-             remote_path, HOST, PORT);
+             remote_path, HOST);
+
+#ifdef USE_HTTPS
+    {
+        int sent = 0;
+        int req_len = (int)strlen(request);
+        while (sent < req_len) {
+            int ret = mbedtls_ssl_write(&sess.ssl, (const unsigned char *)(request + sent), req_len - sent);
+            if (ret == MBEDTLS_ERR_SSL_WANT_READ || ret == MBEDTLS_ERR_SSL_WANT_WRITE) continue;
+            if (ret < 0) { my_log("   [ERR] TLS write fail: -0x%04x\n", -ret); https_session_free(&sess); return -1; }
+            sent += ret;
+        }
+    }
+#else
     send(sockfd, request, strlen(request), 0);
+#endif
 
     FILE *fp = fopen(local_path, "wb");
-    if (!fp) { my_log("   [ERR] Write fail: %s\n", local_path); close(sockfd); return -1; }
+    if (!fp) { my_log("   [ERR] Write fail: %s\n", local_path);
+#ifdef USE_HTTPS
+        https_session_free(&sess);
+#else
+        close(sockfd);
+#endif
+        return -1;
+    }
 
     char buffer[BUFFER_SIZE];
+    char header_buf[4096];
     int bytes_received, header_ended = 0, total_bytes = 0;
-    while ((bytes_received = recv(sockfd, buffer, BUFFER_SIZE, 0)) > 0) {
+    int header_len = 0;
+    int status_code = 0;
+    int chunked = 0;
+    long content_length = -1;
+    int chunk_state = 0; /* 0=size line, 1=data, 2=CRLF after data */
+    size_t chunk_size = 0;
+    size_t chunk_read = 0;
+    char chunk_size_buf[32];
+    int chunk_size_len = 0;
+    int chunk_done = 0;
+
+    memset(header_buf, 0, sizeof(header_buf));
+    while (1) {
+#ifdef USE_HTTPS
+        bytes_received = mbedtls_ssl_read(&sess.ssl, (unsigned char *)buffer, BUFFER_SIZE);
+        if (bytes_received == MBEDTLS_ERR_SSL_WANT_READ || bytes_received == MBEDTLS_ERR_SSL_WANT_WRITE) continue;
+        if (bytes_received == MBEDTLS_ERR_SSL_RECEIVED_NEW_SESSION_TICKET) continue;
+#else
+        bytes_received = recv(sockfd, buffer, BUFFER_SIZE, 0);
+#endif
+        if (bytes_received <= 0) break;
+
         char *data_ptr = buffer;
         int data_len = bytes_received;
+
         if (!header_ended) {
-            for (int i = 0; i < bytes_received - 3; i++) {
-                if (buffer[i] == '\r' && buffer[i+1] == '\n' && buffer[i+2] == '\r' && buffer[i+3] == '\n') {
-                    header_ended = 1; data_ptr = buffer + i + 4; data_len = bytes_received - (i + 4); break;
+            // Accumulate and parse HTTP headers (can span multiple reads).
+            int header_space = (int)sizeof(header_buf) - 1 - header_len;
+            int copy_len = bytes_received < header_space ? bytes_received : header_space;
+            if (copy_len > 0) {
+                memcpy(header_buf + header_len, buffer, copy_len);
+                header_len += copy_len;
+                header_buf[header_len] = '\0';
+            }
+
+            char *hend = strstr(header_buf, "\r\n\r\n");
+            if (hend) {
+                header_ended = 1;
+                int header_total_len = (int)(hend - header_buf) + 4;
+
+                // Basic header hints; accept chunked or Content-Length.
+                if (sscanf(header_buf, "HTTP/%*s %d", &status_code) != 1) status_code = 0;
+                if (strstr(header_buf, "Transfer-Encoding: chunked") || strstr(header_buf, "transfer-encoding: chunked")) {
+                    chunked = 1;
+                }
+                {
+                    char *cl = strstr(header_buf, "Content-Length:");
+                    if (!cl) cl = strstr(header_buf, "content-length:");
+                    if (cl) content_length = atol(cl + 15);
+                }
+                if (status_code != 200) {
+                    my_log("   [WARN] HTTP status: %d\n", status_code);
+                }
+
+                int bytes_from_current = 0;
+                if (header_total_len > (header_len - copy_len)) {
+                    bytes_from_current = header_total_len - (header_len - copy_len);
+                }
+                if (bytes_from_current < 0) bytes_from_current = 0;
+                if (bytes_from_current > bytes_received) bytes_from_current = bytes_received;
+
+                data_ptr = buffer + bytes_from_current;
+                data_len = bytes_received - bytes_from_current;
+            } else {
+                data_len = 0;
+            }
+        }
+
+        if (header_ended && data_len > 0) {
+            if (!chunked) {
+                fwrite(data_ptr, 1, data_len, fp);
+                total_bytes += data_len;
+            } else if (!chunk_done) {
+                // Minimal chunked decoder for HTTP/1.1.
+                int i = 0;
+                while (i < data_len && !chunk_done) {
+                    unsigned char c = (unsigned char)data_ptr[i];
+                    if (chunk_state == 0) {
+                        if (c == '\n') {
+                            chunk_size_buf[chunk_size_len] = '\0';
+                            chunk_size = (size_t)strtoul(chunk_size_buf, NULL, 16);
+                            chunk_read = 0;
+                            chunk_size_len = 0;
+                            if (chunk_size == 0) {
+                                chunk_done = 1;
+                                chunk_state = 0;
+                            } else {
+                                chunk_state = 1;
+                            }
+                        } else if (c != '\r') {
+                            if (chunk_size_len < (int)sizeof(chunk_size_buf) - 1)
+                                chunk_size_buf[chunk_size_len++] = (char)c;
+                        }
+                        i++;
+                    } else if (chunk_state == 1) {
+                        size_t remain = chunk_size - chunk_read;
+                        size_t take = (size_t)(data_len - i);
+                        if (take > remain) take = remain;
+                        if (take > 0) {
+                            fwrite(data_ptr + i, 1, take, fp);
+                            total_bytes += (int)take;
+                            chunk_read += take;
+                            i += (int)take;
+                        }
+                        if (chunk_read >= chunk_size) chunk_state = 2;
+                    } else {
+                        if (c == '\n') chunk_state = 0;
+                        i++;
+                    }
                 }
             }
-            if (!header_ended) data_len = 0;
         }
-        if (header_ended && data_len > 0) { fwrite(data_ptr, 1, data_len, fp); total_bytes += data_len; }
     }
+
+#ifdef USE_HTTPS
+    if (bytes_received < 0 &&
+        bytes_received != MBEDTLS_ERR_SSL_PEER_CLOSE_NOTIFY &&
+        bytes_received != MBEDTLS_ERR_SSL_RECEIVED_NEW_SESSION_TICKET) {
+        my_log("   [ERR] TLS read fail: -0x%04x\n", -bytes_received);
+    }
+    // TLS 1.3 may send session tickets during reads; ignore them as non-fatal.
+#else
+    if (bytes_received < 0) {
+        my_log("   [ERR] Read fail: %d\n", errno);
+    }
+#endif
     fclose(fp);
+#ifdef USE_HTTPS
+    https_session_free(&sess);
+#else
     close(sockfd);
+#endif
     draw_status_dot(total_bytes);
     return 0;
 }
@@ -355,9 +614,11 @@ int _init(void) {
 
 
     my_log("--- START UPDATE ---\n");
+    printf("Host: %s\n", HOST);
 
     char list_url[256];
     snprintf(list_url, sizeof(list_url), "%s%s", BASE_URL_PATH, LIST_FILE_REMOTE);
+    printf("[GET] %s -> %s\n", list_url, LIST_FILE_LOCAL);
     if (download_file(list_url, LIST_FILE_LOCAL) != 0) { my_log("FATAL: Seznam nestazen.\n"); fb_close(); return -1; }
 
     FILE *fp = fopen(LIST_FILE_LOCAL, "r");
