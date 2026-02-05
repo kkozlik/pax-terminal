@@ -15,12 +15,12 @@ all: build
 
 build: $(TARGET)
 
-$(TARGET): wifi.c mbedtls_entropy.c $(MBEDTLS_LIBS)
+$(TARGET): wifi.c https.c mbedtls_entropy.c $(MBEDTLS_LIBS)
 	arm-none-eabi-gcc -shared -fPIC -I /usr/arm-linux-gnueabi/include/ \
 		-I $(MBEDTLS_DIR)/include/ \
 		-I $(MBEDTLS_DIR)/tf-psa-crypto/include/ \
 		-I $(MBEDTLS_DIR)/tf-psa-crypto/drivers/builtin/include/ \
-		-MMD -MP -DUSE_HTTPS -o $(TARGET) wifi.c mbedtls_entropy.c $(MBEDTLS_LIBS) -nostartfiles -static
+		-MMD -MP -DUSE_HTTPS -o $(TARGET) wifi.c https.c mbedtls_entropy.c $(MBEDTLS_LIBS) -nostartfiles -static
 
 install: $(TARGET)
 	@echo Pushing $(TARGET)
