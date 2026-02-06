@@ -23,6 +23,34 @@ Example:
 
 ## Build and install
 
+### HTTPS dependency (MbedTLS)
+
+If `USE_HTTPS` is set to `1`, you must build MbedTLS first. The static libraries
+are expected at `../external/mbedtls/build/library/`.
+`make mbedtls` does not initialize submodules, so ensure the submodule is present.
+If the build fails, see the MbedTLS documentation:
+```
+https://github.com/Mbed-TLS/mbedtls
+```
+Dependencies and generated sources for development builds:
+```
+https://github.com/Mbed-TLS/mbedtls#generated-source-files-in-the-development-branch
+```
+
+From the repo root:
+
+```sh
+git submodule update --init --recursive
+make -C wifiupdate mbedtls
+```
+
+Or from this directory:
+
+```sh
+git submodule update --init --recursive
+make mbedtls
+```
+
 ### Build
 
 From this directory:

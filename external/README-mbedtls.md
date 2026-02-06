@@ -4,7 +4,6 @@
 git submodule update --init --recursive
 cd mbedtls
 scripts/config.py baremetal
-scripts/config.py set MBEDTLS_NET_C
 mkdir build
 cd build
 cmake .. -DCMAKE_TOOLCHAIN_FILE=../../arm-gcc-toolchain.cmake \

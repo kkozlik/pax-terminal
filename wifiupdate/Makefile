@@ -31,7 +31,7 @@ else
 LINK_LIBS :=
 endif
 
-.PHONY: all build install clean help
+.PHONY: all build install clean help mbedtls
 
 all: build
 
@@ -51,11 +51,23 @@ install: $(TARGET)
 clean:
 	@rm -f $(TARGET) $(DEPS)
 
+mbedtls:
+	@echo "Building MbedTLS in $(MBEDTLS_DIR)"
+	@cd $(MBEDTLS_DIR) && scripts/config.py baremetal
+	@rm -rf $(MBEDTLS_BUILD)
+	@mkdir -p $(MBEDTLS_BUILD)
+	@cd $(MBEDTLS_BUILD) && cmake .. -DCMAKE_TOOLCHAIN_FILE=../../arm-gcc-toolchain.cmake \
+		-DENABLE_TESTING=OFF \
+		-DENABLE_PROGRAMS=OFF \
+		-DBUILD_SHARED_LIBS=OFF
+	@cd $(MBEDTLS_BUILD) && cmake --build .
+
 help:
 	@echo "Targets:"
 	@echo "  all/build   - build $(TARGET)"
 	@echo "  install     - push $(TARGET) and Loader (DEVICE=$(DEVICE))"
 	@echo "  clean       - remove $(TARGET)"
+	@echo "  mbedtls     - build MbedTLS static libs (no git submodule update)"
 	@echo "Config:"
 	@echo "  USE_HTTPS   - $(USE_HTTPS) (from $(CONFIG_FILES))"
 
