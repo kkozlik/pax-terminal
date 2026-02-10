@@ -201,12 +201,6 @@ void draw_circle(color_t *buffer,int xc,int yc,int r,color_t color) {
     }
 }
 
-void draw_hand(color_t *buffer,int xc,int yc,float angle,int length,color_t color) {
-    int x1 = xc + (int)(length * cosf(angle));
-    int y1 = yc + (int)(length * sinf(angle));
-    draw_line(buffer, xc, yc, x1, y1, color);
-}
-
 void clear_buffer(color_t *buffer, color_t color) {
     int pixels = SCREEN_WIDTH * SCREEN_HEIGHT;
     for (int i = 0; i < pixels; i++) buffer[i] = color;
@@ -231,5 +225,38 @@ void draw_text(color_t *buffer,int x,int y,const char *text,color_t color) {
         draw_char(buffer,x,y,*text,color);
         x += 8;
         text++;
+    }
+}
+
+uint16_t rgb24_to_rgb565(uint8_t r, uint8_t g, uint8_t b) {
+    return ((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3);
+}
+
+/**
+ * Draw BMP image at given position in buffer
+ */
+void draw_bmp_image(color_t *buffer, int offset_x, int offset_y, BITMAPINFOHEADER bih, uint8_t *bmp_data) {
+    int width = bih.biWidth;
+    int height = bih.biHeight;
+    int pad = (4 - (width * 3) % 4) % 4;
+
+    for (int x = 0; x < height && (x + offset_x) < SCREEN_HEIGHT; ++x) {
+        int src_x = height - 1 - x;
+
+        for (int y = 0; y < width; ++y) {
+            int dst_y = SCREEN_WIDTH - 1 - (y + offset_y);
+            if (dst_y < 0 || dst_y >= SCREEN_WIDTH) continue;
+
+            int src_y = width - 1 - y;
+            int bmp_index = (src_x * (width * 3 + pad)) + (src_y * 3);
+            uint8_t b = bmp_data[bmp_index];
+            uint8_t g = bmp_data[bmp_index + 1];
+            uint8_t r = bmp_data[bmp_index + 2];
+
+            uint16_t pixel565 = rgb24_to_rgb565(r, g, b);
+
+            int buffer_index = ((x + offset_x) * SCREEN_WIDTH) + dst_y;
+            buffer[buffer_index] = pixel565;
+        }
     }
 }
