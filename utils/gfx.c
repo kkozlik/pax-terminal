@@ -149,7 +149,7 @@ const uint16_t segments[11][5] = {
 };
 
 color_t *init_draw_buffer(){
-    color_t *buffer = (color_t *)malloc(SCREEN_WIDTH * SCREEN_HEIGHT * BPP);
+    color_t *buffer = (color_t *)malloc(SCREEN_HEIGHT * SCREEN_WIDTH * BPP);
     if (!buffer) {
         perror("Error allocating memory for buffer");
         fflush(stderr);
@@ -169,13 +169,13 @@ void free_draw_buffer(color_t *buffer){
  * @param color_t *fbp          Framebuffer
  */
 void draw_buffer(color_t *buffer, color_t *fbp){
-    memcpy(fbp, buffer, SCREEN_WIDTH * SCREEN_HEIGHT * BPP);
+    memcpy(fbp, buffer, SCREEN_HEIGHT * SCREEN_WIDTH * BPP);
 }
 
 void draw_pixel(color_t *buffer, int x, int y, color_t color) {
-    if (y >= 0 && y < SCREEN_WIDTH && x >= 0 && x < SCREEN_HEIGHT) {
-        buffer[(SCREEN_WIDTH * SCREEN_HEIGHT) -
-               ((SCREEN_HEIGHT - x) * SCREEN_WIDTH + y)] = color;
+    if (y >= 0 && y < SCREEN_HEIGHT && x >= 0 && x < SCREEN_WIDTH) {
+        buffer[(SCREEN_HEIGHT * SCREEN_WIDTH) -
+               ((SCREEN_WIDTH - x) * SCREEN_HEIGHT + y)] = color;
     }
 }
 
@@ -216,7 +216,7 @@ void draw_circle(color_t *buffer,int xc,int yc,int r,color_t color) {
 }
 
 void clear_buffer(color_t *buffer, color_t color) {
-    int pixels = SCREEN_WIDTH * SCREEN_HEIGHT;
+    int pixels = SCREEN_HEIGHT * SCREEN_WIDTH;
     for (int i = 0; i < pixels; i++) buffer[i] = color;
 }
 
@@ -276,12 +276,12 @@ void draw_bmp_image(color_t *buffer, int offset_x, int offset_y, BITMAPINFOHEADE
     int height = bih.biHeight;
     int pad = (4 - (width * 3) % 4) % 4;
 
-    for (int x = 0; x < height && (x + offset_x) < SCREEN_HEIGHT; ++x) {
+    for (int x = 0; x < height && (x + offset_x) < SCREEN_WIDTH; ++x) {
         int src_x = height - 1 - x;
 
         for (int y = 0; y < width; ++y) {
-            int dst_y = SCREEN_WIDTH - 1 - (y + offset_y);
-            if (dst_y < 0 || dst_y >= SCREEN_WIDTH) continue;
+            int dst_y = SCREEN_HEIGHT - 1 - (y + offset_y);
+            if (dst_y < 0 || dst_y >= SCREEN_HEIGHT) continue;
 
             int src_y = width - 1 - y;
             int bmp_index = (src_x * (width * 3 + pad)) + (src_y * 3);
@@ -291,7 +291,7 @@ void draw_bmp_image(color_t *buffer, int offset_x, int offset_y, BITMAPINFOHEADE
 
             uint16_t pixel565 = rgb24_to_rgb565(r, g, b);
 
-            int buffer_index = ((x + offset_x) * SCREEN_WIDTH) + dst_y;
+            int buffer_index = ((x + offset_x) * SCREEN_HEIGHT) + dst_y;
             buffer[buffer_index] = pixel565;
         }
     }

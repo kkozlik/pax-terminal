@@ -6,8 +6,8 @@
 
 #define FB_PATH      "/dev/fb"
 
-#define SCREEN_WIDTH  320
-#define SCREEN_HEIGHT 240
+#define SCREEN_HEIGHT 320
+#define SCREEN_WIDTH  240
 #define BPP           2      // bytes per pixel (RGB565)
 
 typedef unsigned short color_t;

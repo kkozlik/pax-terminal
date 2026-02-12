@@ -25,7 +25,7 @@ color_t *fb_init(int *out_fd) {
     }
     (void)vinfo;
 
-    size_t fb_size = SCREEN_WIDTH * SCREEN_HEIGHT * BPP;
+    size_t fb_size = SCREEN_HEIGHT * SCREEN_WIDTH * BPP;
     color_t *fbp = (color_t *)mmap(0,fb_size,PROT_READ|PROT_WRITE,MAP_SHARED,fb_fd,0);
     if (fbp == MAP_FAILED) {
         perror("Error mapping framebuffer device to memory");
@@ -38,6 +38,6 @@ color_t *fb_init(int *out_fd) {
 }
 
 void fb_close(color_t *fbp,int fb_fd) {
-    if (fbp) munmap(fbp,SCREEN_WIDTH * SCREEN_HEIGHT * BPP);
+    if (fbp) munmap(fbp,SCREEN_HEIGHT * SCREEN_WIDTH * BPP);
     if (fb_fd >= 0) close(fb_fd);
 }
