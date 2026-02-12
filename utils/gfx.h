@@ -15,5 +15,5 @@ void draw_circle(color_t *buffer,int xc,int yc,int r,color_t color);
 void clear_buffer(color_t *buffer, color_t color);
 void draw_char(color_t *buffer,int x,int y,char c,color_t color);
 void draw_text(color_t *buffer,int x,int y,const char *text,color_t color);
-void draw_digit(color_t *buffer,int x,int y,int digit);
+void draw_digit(color_t *buffer,int x,int y,int digit, color_t color);
 void draw_bmp_image(color_t *buffer, int offset_x, int offset_y, BITMAPINFOHEADER bih, uint8_t *bmp_data);

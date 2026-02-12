@@ -243,19 +243,21 @@ void draw_text(color_t *buffer,int x,int y,const char *text,color_t color) {
 }
 
 // 7-seg digits
-void draw_digit(color_t *buffer,int x,int y,int digit) {
+void draw_digit(color_t *buffer,int x,int y,int digit, color_t color) {
     if (digit < 0 || digit > 10) return;
-    for (int col = 4; col >= 0; col--) {
-        uint16_t segment = segments[digit][col];
-        for (int row = 0; row < 15; row++) {
-            if (segment & (1 << row)) {
+
+    for (int row = 4; row >= 0; row--) {
+        uint16_t segment = segments[digit][row];
+
+        for (int col = 0; col < 15; col++) {
+            if (segment & (1 << col)) {
                 for (int j = 0; j < 3; j++) {
                     for (int i = 0; i < 3; i++) {
                         draw_pixel(
                             buffer,
-                            (row + y) * 3 - j + 3,
-                            (x   - col) * 3 - i,
-                            0xFFFF
+                            x + col * 3 + j,
+                            y - row * 3 - i,
+                            color
                         );
                     }
                 }
