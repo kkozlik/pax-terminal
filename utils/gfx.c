@@ -134,6 +134,20 @@ static const uint8_t font8x8_basic[128][8] = {
     { 0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00 }  // 7F
 };
 
+const uint16_t segments[11][5] = {
+    {0B11111111,0B11000011,0B11000011,0B11000011,0B11111111}, // 0
+    {0B11000000,0B11000000,0B11000000,0B11000000,0B11000000}, // 1
+    {0B11111111,0B00000011,0B11111111,0B11000000,0B11111111}, // 2
+    {0B11111111,0B11000000,0B11111111,0B11000000,0B11111111}, // 3
+    {0B11000000,0B11000000,0B11111111,0B11000011,0B11000011}, // 4
+    {0B11111111,0B11000000,0B11111111,0B00000011,0B11111111}, // 5
+    {0B11111111,0B11000011,0B11111111,0B00000011,0B11111111}, // 6
+    {0B11000000,0B11000000,0B11000000,0B11000000,0B11111111}, // 7
+    {0B11111111,0B11000011,0B11111111,0B11000011,0B11111111}, // 8
+    {0B11111111,0B11000000,0B11111111,0B11000011,0B11111111}, // 9
+    {0B00000000,0B00000000,0B00111000,0B00000000,0B00111000}, // :
+};
+
 color_t *init_draw_buffer(){
     color_t *buffer = (color_t *)malloc(SCREEN_WIDTH * SCREEN_HEIGHT * BPP);
     if (!buffer) {
@@ -225,6 +239,28 @@ void draw_text(color_t *buffer,int x,int y,const char *text,color_t color) {
         draw_char(buffer,x,y,*text,color);
         x += 8;
         text++;
+    }
+}
+
+// 7-seg digits
+void draw_digit(color_t *buffer,int x,int y,int digit) {
+    if (digit < 0 || digit > 10) return;
+    for (int col = 4; col >= 0; col--) {
+        uint16_t segment = segments[digit][col];
+        for (int row = 0; row < 15; row++) {
+            if (segment & (1 << row)) {
+                for (int j = 0; j < 3; j++) {
+                    for (int i = 0; i < 3; i++) {
+                        draw_pixel(
+                            buffer,
+                            (row + y) * 3 - j + 3,
+                            (x   - col) * 3 - i,
+                            0xFFFF
+                        );
+                    }
+                }
+            }
+        }
     }
 }
 
